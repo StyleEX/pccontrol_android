@@ -40,7 +40,10 @@
         android:layout_alignParentLeft="true"
         android:layout_alignParentStart="true"
         android:indeterminate="false"
-        android:max="100" />
+        android:max="100"
+        android:clickable="false"
+        android:focusable="false"
+        android:focusableInTouchMode="false" />
 
     <TextView
         android:layout_width="wrap_content"

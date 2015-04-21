@@ -2,95 +2,129 @@ package com.example.styleex.pccontrol;
 
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.SeekBar;
 
 import org.json.JSONArray;
-import org.json.JSONException;
 
 import java.io.*;
 import java.net.*;
-import java.util.List;
 
 
 public class MainActivity extends ActionBarActivity {
+    private Socket mSocket;
+
+    public void setSocket(Socket mSocket) {
+        this.mSocket = mSocket;
+        findViewById(R.id.seekBar).setEnabled(mSocket != null);
+
+        SeekBar.OnSeekBarChangeListener listener = null;
+        if (mSocket != null) {
+            listener = new SeekBar.OnSeekBarChangeListener() {
+                @Override
+                public void onStartTrackingTouch(SeekBar seekBar) { }
+
+                @Override
+                public void onStopTrackingTouch(SeekBar seekBar) { }
+
+                @Override
+                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                    changeVolume(((SeekBar)findViewById(R.id.seekBar)).getProgress());
+                }
+            };
+        }
+
+        ((SeekBar)findViewById(R.id.seekBar)).setOnSeekBarChangeListener(listener);
+    }
+
+    private void doConnect() {
+        if (mSocket == null) {
+            new ConnectTask().execute(((EditText) findViewById(R.id.ip)).getText().toString());
+        }
+    }
+
+    private void changeVolume(Integer volume) {
+        new ChangeVolumeTask().execute(volume);
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-    }
-
-
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.menu_main, menu);
-        return true;
+        findViewById(R.id.seekBar).setEnabled(false);
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        int id = item.getItemId();
-
-        //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
-            return true;
+    protected void onStop() {
+        super.onStop();
+        try {
+            if (mSocket != null) {
+                mSocket.close();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            setSocket(null);
         }
+    }
 
-        return super.onOptionsItemSelected(item);
+    @Override
+    protected void onResume() {
+        super.onResume();
+        doConnect();
+
     }
 
     public void connect(View v) {
-
-        SeekBar seek = (SeekBar)findViewById(R.id.seekBar);
-        seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-
-            }
-
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                new ChangeVolumeTask().execute();
-            }
-        });
+        doConnect();
     }
 
-    private class ChangeVolumeTask extends android.os.AsyncTask<String, Void, Boolean> {
+    private class ConnectTask extends android.os.AsyncTask<String, Void, Socket> {
         @Override
-        protected Boolean doInBackground(String... urls) {
-            EditText ipEdit = (EditText)findViewById(R.id.ip);
-            SeekBar seek = (SeekBar)findViewById(R.id.seekBar);
-
+        protected Socket doInBackground(String... ip) {
             try {
-                org.json.JSONObject json = new org.json.JSONObject();
-                org.json.JSONArray arr = new JSONArray();
-                arr.put(Integer.toString(seek.getProgress()));
+                return new Socket(ip[0], 9999);
+            } catch (Exception e) {
+                // TODO: Maybe server program not started?
+                e.printStackTrace();
+            }
+            return null;
+        }
 
+        @Override
+        protected void onPostExecute(Socket socket) {
+            super.onPostExecute(socket);
+            setSocket(socket);
+        }
+    }
+
+    private class ChangeVolumeTask extends android.os.AsyncTask<Integer, Void, Boolean> {
+        @Override
+        protected Boolean doInBackground(Integer... volume) {
+            try {
+                org.json.JSONArray arr = new JSONArray();
+                arr.put(Integer.toString(volume[0]));
+
+                org.json.JSONObject json = new org.json.JSONObject();
                 json.put("name", "volume");
                 json.put("args", arr);
 
-                InetAddress serverAddr = InetAddress.getByName(ipEdit.getText().toString());
-                Socket clientSocket = new Socket(serverAddr, 9999);
-                DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
-                outToServer.writeBytes(json.toString());
-                clientSocket.close();
+                DataOutputStream outToServer = new DataOutputStream(mSocket.getOutputStream());
+                outToServer.writeBytes(json.toString() + '\n');
             } catch (Exception e) {
-                e.fillInStackTrace();
+                e.printStackTrace();
+                return false;
             }
             return true;
+        }
+
+        @Override
+        protected void onPostExecute(Boolean result) {
+            super.onPostExecute(result);
+            if (!result) {
+                setSocket(null);
+            }
         }
     }
 }
