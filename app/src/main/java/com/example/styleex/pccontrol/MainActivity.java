@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.SeekBar;
+import android.widget.TextView;
 
 import org.json.JSONArray;
 
@@ -99,9 +100,9 @@ public class MainActivity extends ActionBarActivity {
         }
     }
 
-    private class ChangeVolumeTask extends android.os.AsyncTask<Integer, Void, Boolean> {
+    private class ChangeVolumeTask extends android.os.AsyncTask<Integer, Void, Integer> {
         @Override
-        protected Boolean doInBackground(Integer... volume) {
+        protected Integer doInBackground(Integer... volume) {
             try {
                 org.json.JSONArray arr = new JSONArray();
                 arr.put(Integer.toString(volume[0]));
@@ -114,16 +115,19 @@ public class MainActivity extends ActionBarActivity {
                 outToServer.writeBytes(json.toString() + '\n');
             } catch (Exception e) {
                 e.printStackTrace();
-                return false;
+                return -1;
             }
-            return true;
+            return volume[0];
         }
 
         @Override
-        protected void onPostExecute(Boolean result) {
+        protected void onPostExecute(Integer result) {
             super.onPostExecute(result);
-            if (!result) {
+            if (result == -1) {
                 setSocket(null);
+            } else {
+
+                ((TextView)findViewById(R.id.curVolumeTextView)).setText(String.format("%d%%", result));
             }
         }
     }
