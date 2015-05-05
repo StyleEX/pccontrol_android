@@ -2,26 +2,30 @@ package com.example.styleex.pccontrol;
 
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
 import org.json.JSONArray;
+import com.thetransactioncompany.jsonrpc2.*;
+import com.thetransactioncompany.jsonrpc2.client.*;
+import java.util.*;
 
 import java.io.*;
 import java.net.*;
 
 
 public class MainActivity extends ActionBarActivity {
-    private Socket mSocket;
+    private JSONRPC2Session mSession;
 
-    public void setSocket(Socket mSocket) {
-        this.mSocket = mSocket;
-        findViewById(R.id.seekBar).setEnabled(mSocket != null);
+    public void setSession(JSONRPC2Session mSession) {
+        this.mSession = mSession;
+        findViewById(R.id.seekBar).setEnabled(mSession != null);
 
         SeekBar.OnSeekBarChangeListener listener = null;
-        if (mSocket != null) {
+        if (mSession != null) {
             listener = new SeekBar.OnSeekBarChangeListener() {
                 @Override
                 public void onStartTrackingTouch(SeekBar seekBar) { }
@@ -40,8 +44,13 @@ public class MainActivity extends ActionBarActivity {
     }
 
     private void doConnect() {
-        if (mSocket == null) {
-            new ConnectTask().execute(((EditText) findViewById(R.id.ip)).getText().toString());
+        try {
+            String hostname = ((EditText) findViewById(R.id.ip)).getText().toString();
+            URL url = new URL(String.format("http://%s:10000/rpc", hostname));
+
+            setSession(new JSONRPC2Session(url));
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
         }
     }
 
@@ -59,15 +68,7 @@ public class MainActivity extends ActionBarActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        try {
-            if (mSocket != null) {
-                mSocket.close();
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            setSocket(null);
-        }
+        setSession(null);
     }
 
     @Override
@@ -81,54 +82,57 @@ public class MainActivity extends ActionBarActivity {
         doConnect();
     }
 
-    private class ConnectTask extends android.os.AsyncTask<String, Void, Socket> {
-        @Override
-        protected Socket doInBackground(String... ip) {
-            try {
-                return new Socket(ip[0], 9999);
-            } catch (Exception e) {
-                // TODO: Maybe server program not started?
-                e.printStackTrace();
-            }
-            return null;
-        }
+    public void shutdown(View v) {
+        String time = ((EditText) findViewById(R.id.shutdownTime)).getText().toString();
+        new ShutdownTask().execute(Integer.parseInt(time));
+    }
 
-        @Override
-        protected void onPostExecute(Socket socket) {
-            super.onPostExecute(socket);
-            setSocket(socket);
+    protected JSONRPC2Response rpc_request(final String method,
+                          final Map <String,Object> namedParams,
+                          final Object id) {
+        try {
+            JSONRPC2Request request = new JSONRPC2Request(method, namedParams, 0);
+            Log.d("Request", request.toString());
+
+            JSONRPC2Response response = mSession.send(request);
+            Log.d("response", response.toString());
+            return response;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
         }
     }
 
     private class ChangeVolumeTask extends android.os.AsyncTask<Integer, Void, Integer> {
         @Override
         protected Integer doInBackground(Integer... volume) {
-            try {
-                org.json.JSONArray arr = new JSONArray();
-                arr.put(Integer.toString(volume[0]));
+            Map<String, Object> params = new HashMap<String, Object>();
+            params.put("Level", volume[0]);
 
-                org.json.JSONObject json = new org.json.JSONObject();
-                json.put("name", "volume");
-                json.put("args", arr);
-
-                DataOutputStream outToServer = new DataOutputStream(mSocket.getOutputStream());
-                outToServer.writeBytes(json.toString() + '\n');
-            } catch (Exception e) {
-                e.printStackTrace();
-                return -1;
+            JSONRPC2Response response = rpc_request("VolumeService.SetLevel", params, 0);
+            if ( response == null ) {
+                Log.e("RPC Error", "Null response");
             }
             return volume[0];
         }
 
         @Override
         protected void onPostExecute(Integer result) {
-            super.onPostExecute(result);
-            if (result == -1) {
-                setSocket(null);
-            } else {
+            ((TextView)findViewById(R.id.curVolumeTextView)).setText(String.format("%d%%", result));
+        }
+    }
 
-                ((TextView)findViewById(R.id.curVolumeTextView)).setText(String.format("%d%%", result));
+    private class ShutdownTask extends android.os.AsyncTask<Integer, Void, Integer> {
+        @Override
+        protected Integer doInBackground(Integer... time) {
+            Map<String, Object> params = new HashMap<String, Object>();
+            params.put("Minutes", time[0]);
+
+            JSONRPC2Response response = rpc_request("SystemService.Shutdown", params, 0);
+            if ( response == null ) {
+                Log.e("RPC Error", "Null response");
             }
+            return time[0];
         }
     }
 }
